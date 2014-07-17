@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<style>
+
+.link {
+  stroke: #2E2E2E;
+  stroke-width: 4px;
+}
+
+.node {
+  cursor: move;
+  fill: #ccc;
+  stroke: #000;
+  stroke-width: 0px;
+}
+
+.node.fixed {
+  fill: #00f;
+}
+
+.node text {
+  font: 12px sans-serif;
+  pointer-events: none;
+  text-anchor: middle;
+  display: block;
+  color: #2E2E2E;
+  fill: grey;
+}
+</style>
+<body>
+<div id="grafico">
+</div>
+<input type="text" name="forumid" id="forumid" value="53"> &nbsp; <input type="button" value="generar" onclick="generar()">
+<br>
+53  Week 1 forum<br>
+54  Technical support forum  (for problems with Moodle or ILDE)<br>
+56  Course Journal<br>
+57  Greek study circle: for conversations ONLY in Greek<br>
+58  Week 2 forum<br>
+59  Week 3 forum<br>
+60  Week 4 forum<br>
+62  Need help? Discouraged?<br>
+63  Week 4 "optional activity 18 - advanced" forum<br>
+64  Week 5 forum<br>
+65  Follow up forum<br>
+
+</body>
+<script src="http://d3js.org/d3.v3.min.js"></script>
+<script>
+var showingLabel = 0;
+
+var width = 1060,
+    height = 700;
+
+var force = d3.layout.force()
+    .size([width, height])
+    .charge(-300)
+    .linkDistance(100)
+    .on("tick", tick);
+
+var color = d3.scale.category10();
+
+var drag = force.drag()
+    .on("dragstart", dragstart);
+
+var svg = d3.select("#grafico").append("svg")
+    .attr("width", width)
+    .attr("height", height);
+
+var link = svg.selectAll(".link"),
+    node = svg.selectAll(".node");
+//getjson.php?forum= + document.getElementById("forumid")
+function generar(){
+  console.log("getjson.php?forum=" + document.getElementById("forumid").value);
+  force = d3.layout.force()
+    .size([width, height])
+    .charge(-300)
+    .linkDistance(100)
+    .on("tick", tick);
+    drag = force.drag()
+    .on("dragstart", dragstart);
+
+svg = d3.select("#grafico").select("svg").remove();
+svg = d3.select("#grafico").append("svg").attr("width", width)
+    .attr("height", height);
+
+
+link = svg.selectAll(".link");
+node = svg.selectAll(".node");
+
+d3.json("getjson.php?forum=" + document.getElementById('forumid').value, function(error, graph) {
+//d3.json("nodes.json", function(error, graph) {
+  if (error) return console.warn(error);
+  force
+      .nodes(graph.nodes)
+      .links(graph.links)
+      .start();
+  
+  var div = d3.select("#forumgraphsvg").append("div")   
+        .attr("class", "forumgraphtooltip")               
+        .style("opacity", 0);
+
+  var linkedByIndex = {};
+  graph.links.forEach(function(d) {
+      linkedByIndex[d.source.index + "," + d.target.index] = 1;
+  });
+
+  function isConnected(a, b) {
+      return linkedByIndex[a.index + "," + b.index] || linkedByIndex[b.index + "," + a.index] || a.index == b.index;
+  }
+
+
+  link = link.data(graph.links)
+    .enter().append("line")
+      .attr("class", "link")
+      .style("stroke-width", function(d) { return d.value; });
+
+  node = node.data(graph.nodes);
+  node.exit().remove();
+
+   var nodeEnter = node.enter().append("g")
+        .attr("class", "node")
+        .on("dblclick", dblclick)
+        .call(force.drag);
+
+ nodeEnter.append("circle")      
+      .attr("r", function(d) {
+          if (d.size) {
+              d.radius = Math.sqrt(d.size)*5;
+          } else {
+              d.radius = 5;
+          }
+          return d.radius;
+      })
+      .style("fill", function(d) { return color(d.group); })
+      .on("mouseover", fade(.1, true))
+      .on("mouseout", fade(1, false));
+      
+  nodeEnter.append("text")
+      .attr("x", 0)
+      .attr("dy", ".35em")
+      .text(function(d) { return d.userid; });    
+  
+  var k = Math.sqrt(node.length / (width * height));
+  console.log("K: " + k);
+  force.charge(-10 / k).gravity(200 * k);  
+
+  function fade(opacity, mouseover) {
+    return function(d) {
+        nodeEnter.style("stroke-opacity", function(o) {
+            thisOpacity = isConnected(d, o) ? 1 : opacity;
+            this.setAttribute('fill-opacity', thisOpacity);
+            return thisOpacity;
+        });
+
+        link.style("opacity", function(o) {
+            return o.source === d || o.target === d ? 1 : opacity;
+        });
+        
+        if (mouseover) {
+            div.transition()
+                .duration(100)
+                .style("opacity", .9);
+            div.html(d.name+"<br /><strong>"+d.discussion+"</strong>D <strong>"+d.reply+"</strong>R")
+                .style("left", (d3.event.pageX) + "px")
+                .style("top", (d3.event.pageY - 50) + "px");
+            d3.select(this).selectAll("text").style("display", "block");
+        } else {
+            div.transition()
+                .duration(200)
+                .style("opacity", 0);
+            d3.select(this).selectAll("text").style("display", "none");
+        }
+    };
+}
+
+});
+}
+
+generar();
+
+function tick() {
+  link.attr("x1", function(d) { return d.source.x; })
+      .attr("y1", function(d) { return d.source.y; })
+      .attr("x2", function(d) { return d.target.x; })
+      .attr("y2", function(d) { return d.target.y; });
+
+  node.attr("transform", function(d) { return "translate(" + d.x + "," + d.y + ")"; });
+}
+
+function dblclick(d) {
+  console.log("dblclick");
+  d3.select(this).classed("fixed", d.fixed = false);
+  d3.select(this).selectAll("text").style("display", "block");
+}
+
+function dragstart(d) {
+  d3.select(this).classed("fixed", d.fixed = true);
+}
+
+function toggleNodeLabel() {
+    var svg = d3.select("#forumgraphsvg").transition();
+    svg.selectAll("text").style("display", "inline");
+}
+
+
+</script>
+
